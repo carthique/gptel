@@ -210,9 +210,10 @@ context."
 
 (defun gptel-context--add-text-file (path)
   "Add text file at PATH to context."
-  (cl-pushnew (list path) gptel-context :test #'equal)
-  (message "File \"%s\" added to context." path)
-  path)
+  (let ((expanded-path (expand-file-name path)))
+    (cl-pushnew (list expanded-path) gptel-context--alist :test #'equal)
+    (message "File \"%s\" added to context." path)
+    expanded-path))
 
 (defun gptel-context--add-binary-file (path)
   "Add binary file at PATH to context if supported.
@@ -221,8 +222,9 @@ Return PATH if added, nil if ignored."
             (mime (mailcap-file-name-to-mime-type path))
             ((gptel--model-mime-capable-p mime)))
       (prog1 path
-        (cl-pushnew (list path :mime mime)
-                    gptel-context :test #'equal)
+        (let ((expanded-path (expand-file-name path)))
+          (cl-pushnew (list expanded-path :mime mime)
+                      gptel-context--alist :test #'equal))
         (message "File \"%s\" added to context." path))
     (message "Ignoring unsupported binary file \"%s\"." path)
     nil))
@@ -528,7 +530,9 @@ HEADER is an optional header to insert before the contents."
     (setq regions (sort regions (lambda (a b) (< (car a) (car b)))))
 
     ;; Insert header
-    (insert (or header (format "In buffer `%s`:\n\n```"(buffer-name buffer)))
+    (insert (or header (format "In buffer =%s=:\n\n="
+        (or (buffer-file-name buffer) (buffer-name buffer)))
+                )
             (gptel--strip-mode-suffix (buffer-local-value
                                        'major-mode buffer))
             "\n")
@@ -649,7 +653,7 @@ CONTEXT-ALIST is the alist of contexts to use to populate the buffer."
                   (if (not spec)      ;BUF is a full buffer, not specific ranges
                       (progn
                         (insert (propertize (format "In buffer %s:\n\n"
-                                                    (buffer-name buf))
+                                                    (or (buffer-file-name buf) (buffer-name buf)))
                                             'face 'bold))
                         (setq beg (point))
                         (insert-buffer-substring buf)
@@ -660,7 +664,7 @@ CONTEXT-ALIST is the alist of contexts to use to populate the buffer."
                         (setq l1 (line-number-at-pos (overlay-start source-ov))
                               l2 (line-number-at-pos (overlay-end source-ov))))
                       (insert (propertize (format "In buffer %s (lines %d-%d):\n\n"
-                                                  (buffer-name buf) l1 l2)
+                                                  (or (buffer-file-name buf) (buffer-name buf)) l1 l2)
                                           'face 'bold))
                       (setq beg (point))
                       (insert-buffer-substring
@@ -672,7 +676,7 @@ CONTEXT-ALIST is the alist of contexts to use to populate the buffer."
                       (overlay-put ov 'evaporate t)))
                   (insert "\n" (make-separator-line) "\n"))
                  (t                     ;BUF is a file path, not a buffer
-                  (insert (propertize (format "In file %s:\n\n" (file-name-nondirectory buf))
+                  (insert (propertize (format "In file %s:\n\n" (expand-file-name buf))
                                       'face 'bold))
                   (setq beg (point))
                   (if-let* ((mime (plist-get spec :mime))
